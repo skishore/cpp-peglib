@@ -16,7 +16,6 @@
 #endif
 
 #include <algorithm>
-#include <any>
 #include <cassert>
 #include <cctype>
 #if __has_include(<charconv>)
@@ -40,6 +39,86 @@
 #if !defined(__cplusplus) || __cplusplus < 201703L
 #error "Requires complete C++17 support"
 #endif
+
+namespace std {
+
+/*-----------------------------------------------------------------------------
+ *  MacOS shipped C++17 without any_cast.
+ *---------------------------------------------------------------------------*/
+
+class any {
+public:
+  any() = default;
+
+  any(const any &rhs) : content_(rhs.clone()) {}
+
+  any(any &&rhs) : content_(rhs.content_) { rhs.content_ = nullptr; }
+
+  template <typename T> any(const T &value) : content_(new holder<T>(value)) {}
+
+  any &operator=(const any &rhs) {
+    if (this != &rhs) {
+      if (content_) { delete content_; }
+      content_ = rhs.clone();
+    }
+    return *this;
+  }
+
+  any &operator=(any &&rhs) {
+    if (this != &rhs) {
+      if (content_) { delete content_; }
+      content_ = rhs.content_;
+      rhs.content_ = nullptr;
+    }
+    return *this;
+  }
+
+  ~any() { delete content_; }
+
+  bool has_value() const { return content_ != nullptr; }
+
+  template <typename T> friend T &any_cast(any &val);
+
+  template <typename T> friend const T &any_cast(const any &val);
+
+private:
+  struct placeholder {
+    virtual ~placeholder() {}
+    virtual placeholder *clone() const = 0;
+  };
+
+  template <typename T> struct holder : placeholder {
+    holder(const T &value) : value_(value) {}
+    placeholder *clone() const override { return new holder(value_); }
+    T value_;
+  };
+
+  placeholder *clone() const { return content_ ? content_->clone() : nullptr; }
+
+  placeholder *content_ = nullptr;
+};
+
+template <typename T> T &any_cast(any &val) {
+  if (!val.content_) { throw std::bad_cast(); }
+  auto p = dynamic_cast<any::holder<T> *>(val.content_);
+  assert(p);
+  if (!p) { throw std::bad_cast(); }
+  return p->value_;
+}
+
+template <> inline any &any_cast<any>(any &val) { return val; }
+
+template <typename T> const T &any_cast(const any &val) {
+  assert(val.content_);
+  auto p = dynamic_cast<any::holder<T> *>(val.content_);
+  assert(p);
+  if (!p) { throw std::bad_cast(); }
+  return p->value_;
+}
+
+template <> inline const any &any_cast<any>(const any &val) { return val; }
+
+} // namespace std
 
 namespace peg {
 
