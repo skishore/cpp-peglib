@@ -1,0 +1,100 @@
+Root <- Expr
+
+Expr <- Expr0
+Expr0 <- Expr1 (',' _ Expr1)*
+
+Expr1 <- TernaryExpr / Expr2
+TernaryExpr <- Expr2 '?' _ Expr ':' _ Expr
+
+Expr2 <- LogicalExpr / Expr3
+LogicalExpr <- LogicalAndExpr / LogicalOrExpr / NullCoalesceExpr
+LogicalAndExpr   <- Expr3 ('&&' _ Expr3)+
+LogicalOrExpr    <- Expr3 ('||' _ Expr3)+
+NullCoalesceExpr <- Expr3 ('??' _ Expr3)+
+
+Expr3 <- BitwiseExpr / Expr4
+BitwiseExpr <- BitwiseAndExpr / BitwiseOrExpr / BitwiseXorExpr
+BitwiseAndExpr <- Expr4 ('&'!'&' _ Expr4)+
+BitwiseOrExpr  <- Expr4 ('|'!'|' _ Expr4)+
+BitwiseXorExpr <- Expr4 ('^' _ Expr4)+
+
+Expr4 <- Expr5 (EQUALITY_OP _ Expr5)?
+Expr5 <- Expr6 (COMPARE_OP _ Expr6)?
+Expr6 <- Expr7 (SHIFT_OP _ Expr7)?
+Expr7 <- Expr8 (PLUS_MINUS _ Expr8)*
+Expr8 <- Expr9 (TIMES_DIVIDE _ Expr9)*
+Expr9 <- ExprA (EXPONENT _  ExprA)*
+ExprA <- (UNARY_OP _)* ExprB
+ExprB <- ExprC (POST_INCDEC _)?
+ExprC <- NEW _ Identifier _ !'(' / ExprD
+ExprD <- (NEW _ Identifier _ ArgList _ / ExprE) AccessOrCall*
+ExprE <- '(' _ Expr ')' _
+       / ListExpr _
+       / ObjectExpr _
+       / Identifier _
+       / Literal _
+       / %recover(expr)
+
+AccessOrCall <- ('.' | '?.') _ Identifier _
+              / '[' _ Expr ']' _
+              / ArgList _
+
+ArgList    <- '(' _ ')' / '(' _ Expr (',' _ Expr)* ')'
+ListExpr   <- '[' _ ']' / '[' _ Expr (',' _ Expr)* ']'
+ObjectExpr <- '{' _ '}' / '{' _ Item (',' _ Item)* '}'
+Item       <- Identifier _ ':' _ Expr
+
+Identifier <- !Keyword [a-zA-Z_$] [a-zA-Z_$0-9]*
+
+EQUALITY_OP  <- '===' | '!=='
+COMPARE_OP   <- '<=' / '<'![<=] / '>=' / '>'![>=] / IN / INSTANCEOF
+SHIFT_OP     <- '<<' / '>>'!'>' / '>>>'
+UNARY_OP     <- '!'!'=' / '~' / '+'![+=] / '-'![-=]
+POST_INCDEC  <- '++' | '--'
+PLUS_MINUS   <- [+-]
+TIMES_DIVIDE <- [*/%]
+EXPONENT     <- '**'
+
+IDCHAR <- [a-zA-Z_$0-9]
+
+IN <- 'in' !IDCHAR
+NEW <- 'new' !IDCHAR
+INSTANCEOF <- 'instanceof' !IDCHAR
+
+Keyword <- ('const' | 'for' | 'in' | 'instanceof' | 'new') !IDCHAR
+
+~_ <- ([ \n\r\t]+ / '/*' (!'*/' .)* '*/' / '//' (![\n] .)* [\n])*
+
+expr <- '' {message "Expected: expession; got: %t"}
+
+#----------------------------------------------------------------------------
+# Literals
+#----------------------------------------------------------------------------
+
+Literal <- FloatLiteral
+         / IntLiteral
+         / StringLiteral
+         / KeywordLiteral
+
+IntLiteral <- HexIntLiteral
+            / BinaryIntLiteral
+            / OctalIntLiteral
+            / DecimalIntLiteral
+DecimalIntLiteral <- '0' / [1-9] [0-9_]*
+HexIntLiteral     <- ('0x' / '0X') [a-fA-F0-9] [a-fA-F0-9_]*
+BinaryIntLiteral  <- ('0b' / '0B') [01] [01_]*
+OctalIntLiteral   <- '0' [0-7] [0-7_]*
+
+FloatLiteral <- DecimalIntLiteral '.' Digits? Exponent?
+              / '.' Digits Exponent?
+              / DecimalIntLiteral Exponent
+Digits   <- [0-9] [0-9_]*
+Exponent <- [eE] [+-]? DecimalIntLiteral
+
+StringLiteral <- '\"' (Escape / !["\\\n\r] .)* '\"'
+               / '\'' (Escape / !['\\\n\r] .)* '\''
+Escape        <- '\\' ([bnrt'"\\] / OctalEscape / UnicodeEscape)
+OctalEscape   <- [0-3] [0-7]{2} / [0-7]{1,2}
+UnicodeEscape <- 'u' [a-zA-Z0-9]{4}
+
+KeywordLiteral <- ('true' / 'false' / 'null' / 'undefined') !IDCHAR
